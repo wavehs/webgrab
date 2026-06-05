@@ -4,3 +4,5 @@ test-output/
 .env
 dist/
 build/
+exported/
+
