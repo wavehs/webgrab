@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Страница со свёрнутым контентом</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .content { max-width: 800px; margin: 0 auto; }
+    details { margin: 15px 0; padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
+    summary { cursor: pointer; font-weight: bold; padding: 5px; }
+    .accordion-header { 
+      cursor: pointer; background: #f0f0f0; padding: 10px; margin: 5px 0; 
+      border: 1px solid #ccc; border-radius: 3px; 
+    }
+    .accordion-body { padding: 10px; border: 1px solid #ccc; border-top: none; }
+    .accordion-body.hidden { display: none; }
+  </style>
+</head>
+<body>
+  <main class="content">
+    <h1>Страница со свёрнутыми блоками</h1>
+    
+    <p>Эта страница содержит контент, скрытый в свёрнутых блоках.</p>
+    
+    <!-- Блок details/summary — изначально закрыт -->
+    <details>
+      <summary>Первый свёрнутый блок</summary>
+      <p>Содержимое первого блока. Здесь находится маркер: UNIQUE_TEST_MARKER_COLLAPSED</p>
+    </details>
+    
+    <!-- Блок details/summary — изначально открыт -->
+    <details open>
+      <summary>Второй блок (открыт)</summary>
+      <p>Этот блок изначально развёрнут. Его содержимое видно сразу.</p>
+    </details>
+    
+    <!-- Блок details/summary — изначально закрыт -->
+    <details>
+      <summary>Третий свёрнутый блок</summary>
+      <p>Ещё один скрытый контент внутри третьего блока. Он тоже должен быть раскрыт.</p>
+    </details>
+    
+    <!-- Аккордеон с aria-expanded -->
+    <div>
+      <div class="accordion-header" aria-expanded="false" onclick="toggleAccordion(this)">
+        Аккордеон (свёрнут)
+      </div>
+      <div class="accordion-body hidden" id="accordion-1">
+        <p>Скрытое содержимое аккордеона. Ещё один UNIQUE_TEST_MARKER_COLLAPSED здесь.</p>
+      </div>
+    </div>
+    
+    <!-- Ещё один details — закрыт -->
+    <details>
+      <summary>Четвёртый скрытый блок</summary>
+      <p>Глубоко скрытый контент четвёртого блока. Он должен появиться после раскрытия.</p>
+    </details>
+    
+    <p>Видимый текст на странице, который всегда доступен для извлечения.</p>
+  </main>
+  
+  <script>
+    function toggleAccordion(header) {
+      const isExpanded = header.getAttribute('aria-expanded') === 'true';
+      header.setAttribute('aria-expanded', !isExpanded);
+      const body = header.nextElementSibling;
+      if (body) {
+        body.classList.toggle('hidden');
+      }
+    }
+  </script>
+</body>
+</html>

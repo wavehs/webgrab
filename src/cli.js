@@ -33,12 +33,15 @@ export async function run() {
     .argument('[url]', 'URL страницы для скачивания')
     .option('-f, --format <format>', 'Формат сохранения (pdf, html, mhtml, png, jpg, md, txt, all)', 'pdf')
     .option('-o, --output <filename>', 'Имя выходного файла (без расширения, по умолчанию берется заголовок страницы)')
-    .option('-d, --dir <directory>', 'Директория для сохранения')
+    .option('-d, --dir <directory>', 'Директория для сохранения', '.')
     .option('-c, --cookies <source>', 'Источник cookies: chrome, edge, firefox, или file:путь_к_файлу')
     .option('-w, --wait <ms>', 'Дополнительное ожидание после загрузки страницы (мс)')
     .option('--headed', 'Запустить браузер в видимом режиме')
     .option('--no-bypass', 'Не отключать клиентские защиты от копирования')
     .option('--no-scroll', 'Не прокручивать страницу для ленивой загрузки')
+    .option('--no-expand', 'Не раскрывать свёрнутые блоки (аккордеоны, details/summary)')
+    .option('--deep-scroll', 'Глубокий скроллинг с ожиданием подгрузки контента (для SPA)')
+    .option('--selector <css>', 'CSS-селектор основного контента (вместо автоопределения)')
     .option('--list <file>', 'Текстовый файл со списком URL (по одному на строку)')
     .option('--timeout <ms>', 'Таймаут загрузки страницы (мс)', '30000')
     .option('--viewport <size>', 'Размер окна (например, 1920x1080)', '1920x1080')
@@ -84,7 +87,12 @@ export async function run() {
     }
   }
 
-  // Директория назначения будет создаваться индивидуально для каждого URL
+  // Создаем директорию назначения, если она не существует
+  const targetDir = path.resolve(options.dir);
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true });
+    logger.info(`Создана папка для сохранения: ${targetDir}`);
+  }
 
   let browserInstance = null;
 
@@ -101,26 +109,6 @@ export async function run() {
       
       try {
         await loadPage(page, url, options);
-
-        // Определяем директорию для сохранения
-        let targetDir;
-        if (options.dir) {
-          targetDir = path.resolve(options.dir);
-        } else {
-          let siteName = 'unknown';
-          try {
-            const urlObj = new URL(url);
-            siteName = urlObj.hostname;
-          } catch (e) {
-            // Оставляем 'unknown' в случае некорректного URL
-          }
-          targetDir = path.resolve('exported', siteName);
-        }
-
-        if (!fs.existsSync(targetDir)) {
-          fs.mkdirSync(targetDir, { recursive: true });
-          logger.info(`Создана папка для сохранения: ${targetDir}`);
-        }
 
         // Получаем заголовок страницы для имени файла
         const title = await page.title();

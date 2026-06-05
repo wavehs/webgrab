@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Защищённая страница</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      user-select: none;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      overflow: hidden;
+    }
+    .content { max-width: 800px; margin: 0 auto; }
+    #protection-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 9999;
+      background: transparent;
+    }
+  </style>
+</head>
+<body>
+  <!-- Прозрачный оверлей, блокирующий взаимодействие -->
+  <div id="protection-overlay"></div>
+  
+  <main class="content">
+    <h1>Защищённая страница</h1>
+    
+    <p>Эта страница защищена от копирования. Маркер: UNIQUE_TEST_MARKER_PROTECTED</p>
+    
+    <p>Текст на этой странице невозможно выделить, скопировать или взаимодействовать с ним обычным способом. Используются следующие методы защиты:</p>
+    
+    <ul>
+      <li>CSS: user-select: none</li>
+      <li>JS: блокировка событий contextmenu, copy, selectstart</li>
+      <li>Прозрачный overlay div с z-index: 9999</li>
+      <li>Блокировка прокрутки (overflow: hidden)</li>
+    </ul>
+    
+    <p>Webgrab должен обходить все эти защиты и извлекать контент.</p>
+  </main>
+  
+  <script>
+    // Блокировка контекстного меню
+    document.addEventListener('contextmenu', function(e) {
+      e.preventDefault();
+      return false;
+    });
+    
+    // Блокировка копирования
+    document.addEventListener('copy', function(e) {
+      e.preventDefault();
+      return false;
+    });
+    
+    // Блокировка выделения текста
+    document.addEventListener('selectstart', function(e) {
+      e.preventDefault();
+      return false;
+    });
+    
+    // Блокировка клавиш копирования
+    document.addEventListener('keydown', function(e) {
+      if (e.ctrlKey && (e.key === 'c' || e.key === 'a' || e.key === 'u')) {
+        e.preventDefault();
+        return false;
+      }
+    });
+  </script>
+</body>
+</html>

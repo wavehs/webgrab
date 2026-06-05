@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPA страница с ленивой загрузкой</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+    .content { max-width: 800px; margin: 0 auto; }
+    .section { padding: 40px 0; border-bottom: 1px solid #eee; }
+    .spacer { height: 600px; background: linear-gradient(to bottom, #f0f0f0, #e0e0e0); display: flex; align-items: center; justify-content: center; }
+    .lazy-section { padding: 40px 0; background: #f9fff9; margin: 10px 0; border-left: 3px solid #4caf50; padding-left: 15px; }
+    #lazy-container { min-height: 200px; }
+    #scroll-container { min-height: 200px; }
+  </style>
+</head>
+<body>
+  <main class="content">
+    <h1>SPA страница с динамическим контентом</h1>
+    
+    <div class="section">
+      <h2>Начальный контент</h2>
+      <p>Этот контент загружается сразу. Маркер: UNIQUE_TEST_MARKER_SPA_INITIAL</p>
+      <p>Ниже находится контент, который загружается динамически.</p>
+    </div>
+    
+    <div class="spacer">
+      <span>Промежуточное пространство для скролла (секция 1)</span>
+    </div>
+    
+    <div class="spacer">
+      <span>Промежуточное пространство для скролла (секция 2)</span>
+    </div>
+    
+    <div class="spacer">
+      <span>Промежуточное пространство для скролла (секция 3)</span>
+    </div>
+    
+    <!-- Контейнер для ленивого контента по таймеру -->
+    <div id="lazy-container">
+      <p>Загрузка дополнительных данных...</p>
+    </div>
+    
+    <div class="spacer">
+      <span>Промежуточное пространство для скролла (секция 4)</span>
+    </div>
+    
+    <!-- Контейнер для контента при скролле -->
+    <div id="scroll-container">
+      <p>Ожидание прокрутки до этой области...</p>
+    </div>
+    
+    <div class="spacer">
+      <span>Конец страницы</span>
+    </div>
+  </main>
+  
+  <script>
+    // Ленивая загрузка по таймеру (имитация SPA)
+    setTimeout(() => {
+      const lazyContainer = document.getElementById('lazy-container');
+      if (lazyContainer) {
+        lazyContainer.innerHTML = `
+          <div class="lazy-section">
+            <h3>Динамически загруженный контент</h3>
+            <p>Этот контент появился после задержки в 500 мс. Маркер: UNIQUE_TEST_MARKER_SPA_LAZY</p>
+            <p>Это имитирует загрузку данных через API в SPA-приложении.</p>
+          </div>
+        `;
+      }
+    }, 500);
+    
+    // Ленивая загрузка при скролле через IntersectionObserver
+    const scrollContainer = document.getElementById('scroll-container');
+    if (scrollContainer && 'IntersectionObserver' in window) {
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.innerHTML = `
+              <div class="lazy-section">
+                <h3>Контент, загруженный при скролле</h3>
+                <p>Этот блок появился, когда пользователь долистал до данной области страницы.</p>
+                <p>IntersectionObserver зафиксировал видимость элемента.</p>
+              </div>
+            `;
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.1 });
+      
+      observer.observe(scrollContainer);
+    }
+  </script>
+</body>
+</html>

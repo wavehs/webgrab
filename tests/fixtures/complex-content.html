@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Комплексная тестовая страница</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .content { max-width: 900px; margin: 0 auto; }
+    table { border-collapse: collapse; width: 100%; margin: 20px 0; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background-color: #f2f2f2; }
+    pre { background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; }
+    code { font-family: 'Courier New', monospace; }
+    .sidebar { width: 200px; float: right; background: #f9f9f9; padding: 10px; }
+    nav.navigation { background: #333; color: white; padding: 10px; margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+  <nav class="navigation">
+    <a href="/">Главная</a> | <a href="/about">О проекте</a> | <a href="/docs">Документация</a>
+  </nav>
+  
+  <aside class="sidebar">
+    <h4>Боковая панель</h4>
+    <ul>
+      <li><a href="#section1">Раздел 1</a></li>
+      <li><a href="#section2">Раздел 2</a></li>
+    </ul>
+  </aside>
+  
+  <main class="content">
+    <h1>Комплексная тестовая страница</h1>
+    
+    <p>Эта страница содержит разнообразный контент для тестирования экспортёров. Маркер: UNIQUE_TEST_MARKER_COMPLEX</p>
+    
+    <h2 id="section1">Раздел с таблицей</h2>
+    <p>Ниже представлена таблица с данными о форматах экспорта.</p>
+    
+    <table>
+      <thead>
+        <tr>
+          <th>Формат</th>
+          <th>Расширение</th>
+          <th>Описание</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>PDF</td>
+          <td>.pdf</td>
+          <td>Portable Document Format</td>
+        </tr>
+        <tr>
+          <td>HTML</td>
+          <td>.html</td>
+          <td>HyperText Markup Language</td>
+        </tr>
+        <tr>
+          <td>Markdown</td>
+          <td>.md</td>
+          <td>Облегчённый язык разметки</td>
+        </tr>
+      </tbody>
+    </table>
+    
+    <h3>Блок кода</h3>
+    <pre><code class="language-javascript">// Пример кода JavaScript
+function greet(name) {
+  console.log(`Привет, ${name}!`);
+  return true;
+}
+
+greet('webgrab');</code></pre>
+    
+    <h3 id="section2">Вложенные списки</h3>
+    <ul>
+      <li>Первый уровень — элемент 1
+        <ul>
+          <li>Второй уровень — элемент 1.1
+            <ul>
+              <li>Третий уровень — элемент 1.1.1</li>
+              <li>Третий уровень — элемент 1.1.2</li>
+            </ul>
+          </li>
+          <li>Второй уровень — элемент 1.2</li>
+        </ul>
+      </li>
+      <li>Первый уровень — элемент 2</li>
+      <li>Первый уровень — элемент 3
+        <ul>
+          <li>Второй уровень — элемент 3.1</li>
+        </ul>
+      </li>
+    </ul>
+    
+    <h4>Изображение</h4>
+    <p>Тестовое изображение (1x1 пиксель):</p>
+    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" alt="test-image">
+    
+    <p>Заключительный параграф комплексной страницы. Весь контент должен быть корректно экспортирован в каждый из поддерживаемых форматов.</p>
+  </main>
+</body>
+</html>

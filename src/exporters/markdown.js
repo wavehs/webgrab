@@ -1,6 +1,8 @@
 import fs from 'fs';
 import TurndownService from 'turndown';
+import { gfm } from 'turndown-plugin-gfm';
 import { logger } from '../utils.js';
+import { extractContent } from '../content-detector.js';
 
 /**
  * Экспортирует контент страницы в Markdown
@@ -12,38 +14,10 @@ export async function exportToMarkdown(page, outputPath, options = {}) {
   logger.info(`Экспорт в Markdown: ${outputPath}`);
   
   try {
-    // Получаем очищенный HTML основного содержимого
-    const cleanedHtml = await page.evaluate(() => {
-      const selectors = ['article', 'main', '[role="main"]', '#content', '.content', '.post', 'body'];
-      
-      let mainElement = null;
-      for (const selector of selectors) {
-        const el = document.querySelector(selector);
-        if (el && el.innerText.trim().length > 100) { // Элемент должен быть содержательным
-          mainElement = el;
-          break;
-        }
-      }
-
-      if (!mainElement) {
-        mainElement = document.body;
-      }
-
-      // Создаем копию элемента, чтобы не изменять страницу в браузере
-      const clone = mainElement.cloneNode(true);
-      
-      // Список элементов для удаления (не несущих полезной текстовой нагрузки)
-      const selectorsToRemove = [
-        'script', 'style', 'noscript', 'iframe', 'svg', 'canvas',
-        'nav', 'header', 'footer', '.sidebar', '#sidebar', '.ads',
-        '.menu', '.cookie-consent', '.social-share', '.comments'
-      ];
-      
-      selectorsToRemove.forEach(sel => {
-        clone.querySelectorAll(sel).forEach(el => el.remove());
-      });
-
-      return clone.innerHTML;
+    // Получаем очищенный HTML через умный детектор контента
+    const cleanedHtml = await extractContent(page, {
+      selector: options.selector,
+      url: page.url(),
     });
 
     // Настраиваем Turndown
@@ -51,22 +25,62 @@ export async function exportToMarkdown(page, outputPath, options = {}) {
       headingStyle: 'atx',
       codeBlockStyle: 'fenced',
       emDelimiter: '*',
-      bulletListMarker: '-'
+      bulletListMarker: '-',
+      strongDelimiter: '**',
     });
 
-    // Добавляем правила обработки таблиц (по умолчанию turndown может их игнорировать)
-    turndownService.addRule('tables', {
-      filter: ['table'],
-      replacement: function (content, node) {
-        // Простая конвертация таблиц в текстовый вид
-        return '\n\n' + content + '\n\n';
+    // Подключаем GFM плагин (таблицы, strikethrough, task lists)
+    turndownService.use(gfm);
+
+    // Правило: блоки кода с подсветкой языка
+    turndownService.addRule('fencedCodeBlock', {
+      filter: (node) => {
+        return node.nodeName === 'PRE' && node.querySelector('code');
+      },
+      replacement: (content, node) => {
+        const codeElement = node.querySelector('code');
+        const className = codeElement.getAttribute('class') || '';
+        const langMatch = className.match(/language-(\w+)/);
+        const lang = langMatch ? langMatch[1] : '';
+        const code = codeElement.textContent || '';
+        return `\n\n\`\`\`${lang}\n${code.trim()}\n\`\`\`\n\n`;
       }
+    });
+
+    // Правило: изображения с alt текстом
+    turndownService.addRule('images', {
+      filter: 'img',
+      replacement: (content, node) => {
+        const alt = node.getAttribute('alt') || '';
+        const src = node.getAttribute('src') || node.getAttribute('data-src') || '';
+        if (!src) return '';
+        return `![${alt}](${src})`;
+      }
+    });
+
+    // Правило: удаление пустых ссылок и технических элементов
+    turndownService.addRule('removeEmpty', {
+      filter: (node) => {
+        // Удаляем пустые span/div/a без содержимого
+        if (['SPAN', 'DIV', 'A'].includes(node.nodeName)) {
+          const text = (node.textContent || '').trim();
+          if (!text && !node.querySelector('img')) return true;
+        }
+        return false;
+      },
+      replacement: () => ''
     });
 
     const markdown = turndownService.turndown(cleanedHtml);
     
-    // Форматируем и сохраняем
-    fs.writeFileSync(outputPath, markdown, 'utf-8');
+    // Постобработка: убираем лишние пустые строки (более 2 подряд)
+    const cleanMarkdown = markdown
+      .replace(/\n{4,}/g, '\n\n\n')
+      .replace(/^\s+/, '')
+      .trim();
+
+    // Сохраняем
+    fs.writeFileSync(outputPath, cleanMarkdown, 'utf-8');
     logger.success(`Файл Markdown сохранен: ${outputPath}`);
   } catch (err) {
     logger.error(`Ошибка при экспорте в Markdown: ${err.message}`, err);

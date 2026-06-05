@@ -1,7 +1,8 @@
 import { chromium, firefox } from 'playwright';
 import { logger } from './utils.js';
-import { bypassRestrictions } from './protection-bypass.js';
+import { bypassRestrictions, bypassPostLoad } from './protection-bypass.js';
 import { getBrowserProfilePath, loadCookiesFromFile } from './cookies.js';
+import { detectPlatform, expandCollapsedContent } from './content-detector.js';
 
 /**
  * Инициализирует и настраивает браузер
@@ -95,6 +96,9 @@ export async function loadPage(page, url, options) {
   const timeout = options.timeout ? parseInt(options.timeout) : 30000;
   page.setDefaultTimeout(timeout);
 
+  // Определяем платформу
+  const platform = detectPlatform(url);
+
   // Обход защит до загрузки
   if (options.bypass !== false) {
     await bypassRestrictions(page);
@@ -105,24 +109,54 @@ export async function loadPage(page, url, options) {
 
   // Ждем стабилизации сети (networkidle) если возможно
   try {
-    await page.waitForLoadState('networkidle', { timeout: 5000 });
+    await page.waitForLoadState('networkidle', { timeout: 8000 });
   } catch (e) {
     logger.debug('Таймаут ожидания networkidle, продолжаем работу.');
   }
 
+  // Для SPA-платформ — ждём появления контейнера контента
+  if (platform && platform.waitSelector) {
+    try {
+      logger.info(`Ожидание контента платформы ${platform.name}...`);
+      await page.waitForSelector(platform.waitSelector, { timeout: 15000 });
+      // Дополнительная пауза для рендеринга
+      await page.waitForTimeout(2000);
+    } catch (e) {
+      logger.debug(`Контейнер контента платформы не появился (${platform.waitSelector}), продолжаем.`);
+    }
+  }
+
+  // Раскрытие свёрнутых блоков (до скроллинга, чтобы увидеть полный скролл)
+  if (options.expand !== false) {
+    logger.info('Раскрытие свёрнутых блоков...');
+    await expandCollapsedContent(page, platform);
+  }
+
   // Скроллинг страницы для ленивой загрузки (lazy load картинок и контента)
   if (options.scroll !== false) {
-    logger.info('Прокрутка страницы для загрузки скрытого контента...');
-    await autoScroll(page);
+    const useDeepScroll = options.deepScroll || (platform && platform.needsDeepScroll);
+    
+    if (useDeepScroll) {
+      logger.info('Глубокий скроллинг для загрузки динамического контента...');
+      await deepScroll(page);
+    } else {
+      logger.info('Прокрутка страницы для загрузки скрытого контента...');
+      await autoScroll(page);
+    }
+  }
+
+  // Повторное раскрытие блоков после скроллинга (могли появиться новые)
+  if (options.expand !== false) {
+    await expandCollapsedContent(page, platform);
   }
 
   // Пост-загрузочный обход защит
   if (options.bypass !== false) {
-    await page.evaluate(() => {
-      // Запускаем снятие ограничений повторно
-      if (window.bypassPostLoad) window.bypassPostLoad();
-    });
+    await bypassPostLoad(page);
   }
+
+  // Ожидание загрузки изображений
+  await waitForImages(page);
 
   // Дополнительное ожидание, если указано пользователем
   if (options.wait) {
@@ -148,7 +182,7 @@ function parseViewport(viewportStr) {
 }
 
 /**
- * Скроллит страницу вниз порциями для подгрузки динамического контента
+ * Базовый скроллинг: крутит вниз порциями (для обычных сайтов)
  */
 async function autoScroll(page) {
   await page.evaluate(async () => {
@@ -173,4 +207,108 @@ async function autoScroll(page) {
       }, 70);
     });
   });
+}
+
+/**
+ * Глубокий скроллинг: скроллит порциями и ждёт подгрузки нового контента через MutationObserver.
+ * Для SPA-сайтов, где контент рендерится лениво при скролле.
+ */
+async function deepScroll(page) {
+  await page.evaluate(async () => {
+    await new Promise((resolve) => {
+      const distance = 400;
+      const maxScrolls = 500;
+      const scrollPause = 300;        // Пауза между скроллами (мс)
+      const mutationWait = 1500;      // Время ожидания мутаций после скролла
+      let scrolls = 0;
+      let lastScrollHeight = 0;
+      let stableCount = 0; // Счётчик отсутствия новых мутаций
+      const MAX_STABLE = 3; // Завершаем после N скроллов без новых данных
+
+      async function scrollStep() {
+        if (scrolls >= maxScrolls || stableCount >= MAX_STABLE) {
+          // Возвращаемся в начало
+          window.scrollTo(0, 0);
+          setTimeout(resolve, 500);
+          return;
+        }
+
+        const scrollHeight = document.body.scrollHeight;
+        window.scrollBy(0, distance);
+        scrolls++;
+
+        // Ждём потенциальной подгрузки
+        await new Promise(r => setTimeout(r, scrollPause));
+
+        // Проверяем: появился ли новый контент?
+        const newScrollHeight = document.body.scrollHeight;
+        const currentScroll = window.scrollY + window.innerHeight;
+
+        if (newScrollHeight > lastScrollHeight) {
+          // Контент появился — сбрасываем счётчик стабильности
+          stableCount = 0;
+          lastScrollHeight = newScrollHeight;
+          
+          // Ждём дополнительно для подгрузки lazy-контента
+          await new Promise(r => setTimeout(r, mutationWait));
+        } else if (currentScroll >= newScrollHeight - 10) {
+          // Дошли до конца и новый контент не появляется
+          stableCount++;
+          // Ждём побольше — может быть задержка
+          await new Promise(r => setTimeout(r, mutationWait));
+        }
+
+        // Следующий шаг
+        await scrollStep();
+      }
+
+      scrollStep();
+    });
+  });
+
+  // После основного скролла — медленно скроллим обратно вверх
+  // (некоторые SPA подгружают контент при обратном скролле)
+  await page.evaluate(async () => {
+    await new Promise((resolve) => {
+      const distance = 800;
+      const timer = setInterval(() => {
+        window.scrollBy(0, -distance);
+        if (window.scrollY <= 0) {
+          clearInterval(timer);
+          window.scrollTo(0, 0);
+          setTimeout(resolve, 500);
+        }
+      }, 100);
+    });
+  });
+}
+
+/**
+ * Ожидает загрузки видимых изображений на странице
+ */
+async function waitForImages(page) {
+  try {
+    await page.evaluate(async () => {
+      const images = Array.from(document.querySelectorAll('img'));
+      const visibleImages = images.filter(img => {
+        const rect = img.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      });
+
+      await Promise.allSettled(
+        visibleImages.map(img => {
+          if (img.complete) return Promise.resolve();
+          return new Promise((resolve) => {
+            img.addEventListener('load', resolve, { once: true });
+            img.addEventListener('error', resolve, { once: true });
+            // Таймаут на случай зависания
+            setTimeout(resolve, 5000);
+          });
+        })
+      );
+    });
+  } catch (e) {
+    // Не критично — просто логируем
+    logger.debug('Таймаут ожидания загрузки изображений.');
+  }
 }
