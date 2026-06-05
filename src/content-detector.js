@@ -227,51 +227,179 @@ export async function extractContent(page, options = {}) {
   const allRemoveSelectors = [...removeSelectors, ...genericRemoveSelectors];
 
   const cleanedHtml = await page.evaluate(({ contentSels, removeSels }) => {
+    // Вспомогательные рекурсивные функции для работы с Shadow DOM
+    function getElementText(el) {
+      if (el.nodeType === 3) { // TEXT_NODE
+        return el.textContent;
+      }
+      if (el.nodeType !== 1) { // ELEMENT_NODE
+        return '';
+      }
+      let text = '';
+      if (el.shadowRoot) {
+        for (const child of el.shadowRoot.childNodes) {
+          text += getElementText(child);
+        }
+      }
+      for (const child of el.childNodes) {
+        text += getElementText(child);
+      }
+      return text;
+    }
+
+    function countSelectorRecursive(el, selector) {
+      let count = 0;
+      try {
+        if (el.matches && el.matches(selector)) {
+          count++;
+        }
+      } catch (e) {}
+
+      if (el.shadowRoot) {
+        for (const child of el.shadowRoot.childNodes) {
+          count += countSelectorRecursive(child, selector);
+        }
+      }
+      for (const child of el.childNodes) {
+        count += countSelectorRecursive(child, selector);
+      }
+      return count;
+    }
+
+    function querySelectorIncludingShadow(root, selector) {
+      try {
+        const el = root.querySelector(selector);
+        if (el) return el;
+      } catch (e) {}
+
+      const elements = root.querySelectorAll('*');
+      for (const el of elements) {
+        if (el.shadowRoot) {
+          const found = querySelectorIncludingShadow(el.shadowRoot, selector);
+          if (found) return found;
+        }
+      }
+      return null;
+    }
+
+    function findAllCandidatesIncludingShadow(root = document) {
+      const candidates = [];
+      const tags = ['div', 'section', 'article', 'main'];
+      
+      function traverse(node) {
+        if (node.nodeType === 1) {
+          const tag = node.tagName.toLowerCase();
+          if (tags.includes(tag) || node.getAttribute('role') === 'main') {
+            candidates.push(node);
+          }
+          if (node.shadowRoot) {
+            traverse(node.shadowRoot);
+          }
+        }
+        for (const child of node.childNodes) {
+          traverse(child);
+        }
+      }
+      
+      traverse(root);
+      return candidates;
+    }
+
+    function serializeWithShadowDOM(el, removeSels) {
+      if (el.nodeType === 3) { // TEXT_NODE
+        return el.textContent;
+      }
+      if (el.nodeType !== 1) { // ELEMENT_NODE
+        return '';
+      }
+
+      // Проверяем, нужно ли удалить этот элемент
+      for (const sel of removeSels) {
+        try {
+          if (el.matches(sel)) return '';
+        } catch (e) {}
+      }
+
+      const tagName = el.tagName.toLowerCase();
+      if (['script', 'style', 'noscript', 'svg', 'canvas'].includes(tagName)) {
+        if (tagName === 'iframe') {
+          const src = el.getAttribute('src') || '';
+          if (!src.includes('youtube') && !src.includes('vimeo')) {
+            return '';
+          }
+        } else {
+          return '';
+        }
+      }
+
+      // Проверяем, скрыт ли элемент
+      const style = el.getAttribute('style') || '';
+      if (/display\s*:\s*none/i.test(style)) {
+        return '';
+      }
+
+      let innerHtml = '';
+      if (el.shadowRoot) {
+        const shadowChildren = Array.from(el.shadowRoot.childNodes);
+        for (const child of shadowChildren) {
+          innerHtml += serializeWithShadowDOM(child, removeSels);
+        }
+      }
+      
+      const children = Array.from(el.childNodes);
+      for (const child of children) {
+        innerHtml += serializeWithShadowDOM(child, removeSels);
+      }
+
+      // Сохраняем тег и основные атрибуты для поддержания структуры
+      if (['p', 'div', 'section', 'article', 'main', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'table', 'tr', 'td', 'th', 'thead', 'tbody', 'span', 'pre', 'code', 'blockquote', 'a', 'img'].includes(tagName)) {
+        let attrs = '';
+        if (tagName === 'a' && el.hasAttribute('href')) {
+          attrs += ` href="${el.getAttribute('href')}"`;
+        }
+        if (tagName === 'img') {
+          let src = el.getAttribute('src') || '';
+          if (el.dataset && el.dataset.src) src = el.dataset.src;
+          attrs += ` src="${src}"`;
+          if (el.getAttribute('alt')) attrs += ` alt="${el.getAttribute('alt')}"`;
+          return `<img${attrs} />`;
+        }
+        return `<${tagName}${attrs}>${innerHtml}</${tagName}>`;
+      }
+      return innerHtml;
+    }
+
     /**
      * Эвристика: находим самый содержательный блок в DOM.
-     * Оценка = длина текста * бонусы (наличие заголовков, параграфов, списков).
      */
     function findBestContentBlock() {
-      const candidates = document.querySelectorAll('div, section, article, main, [role="main"]');
+      const candidates = findAllCandidatesIncludingShadow(document);
       let bestElement = null;
       let bestScore = 0;
 
       for (const el of candidates) {
-        // Пропускаем слишком маленькие элементы
-        const text = el.innerText || '';
+        const text = getElementText(el);
         if (text.trim().length < 200) continue;
 
-        // Пропускаем элементы навигации
         const tag = el.tagName.toLowerCase();
         if (['nav', 'header', 'footer', 'aside'].includes(tag)) continue;
 
-        const classList = (el.className || '').toLowerCase();
+        const classList = (el.className || '').toString().toLowerCase();
         if (/nav|menu|sidebar|footer|header|toolbar|topbar/.test(classList)) continue;
 
         let score = text.length;
 
         // Бонусы за содержательные элементы внутри
-        const headings = el.querySelectorAll('h1, h2, h3, h4, h5, h6');
-        score += headings.length * 500;
+        score += countSelectorRecursive(el, 'h1, h2, h3, h4, h5, h6') * 500;
+        score += countSelectorRecursive(el, 'p') * 100;
+        score += countSelectorRecursive(el, 'ul, ol') * 200;
+        score += countSelectorRecursive(el, 'table') * 300;
+        score += countSelectorRecursive(el, 'pre, code') * 200;
 
-        const paragraphs = el.querySelectorAll('p');
-        score += paragraphs.length * 100;
-
-        const lists = el.querySelectorAll('ul, ol');
-        score += lists.length * 200;
-
-        const tables = el.querySelectorAll('table');
-        score += tables.length * 300;
-
-        const codeBlocks = el.querySelectorAll('pre, code');
-        score += codeBlocks.length * 200;
-
-        // Штраф за слишком глубокую вложенность (весь body)
         if (el === document.body) {
           score *= 0.5;
         }
 
-        // Штраф за элементы, которые являются обёрткой всей страницы
         const rect = el.getBoundingClientRect();
         if (rect.height > document.documentElement.scrollHeight * 0.95) {
           score *= 0.6;
@@ -289,14 +417,10 @@ export async function extractContent(page, options = {}) {
     // 1. Пытаемся найти контент по селекторам
     let mainElement = null;
     for (const selector of contentSels) {
-      try {
-        const el = document.querySelector(selector);
-        if (el && (el.innerText || '').trim().length > 50) {
-          mainElement = el;
-          break;
-        }
-      } catch (e) {
-        // Невалидный селектор — пропускаем
+      const el = querySelectorIncludingShadow(document, selector);
+      if (el && getElementText(el).trim().length > 50) {
+        mainElement = el;
+        break;
       }
     }
 
@@ -310,35 +434,15 @@ export async function extractContent(page, options = {}) {
       mainElement = document.body;
     }
 
-    // Клонируем, чтобы не мутировать реальный DOM
-    const clone = mainElement.cloneNode(true);
-
-    // Удаляем мусорные элементы
-    for (const sel of removeSels) {
-      try {
-        clone.querySelectorAll(sel).forEach(el => el.remove());
-      } catch (e) {
-        // Невалидный селектор
-      }
-    }
-
-    // Удаляем пустые элементы (только пробелы/переносы)
-    clone.querySelectorAll('div, span, p').forEach(el => {
-      if (!el.children.length && !(el.textContent || '').trim()) {
-        el.remove();
-      }
-    });
-
-    // Удаляем элементы с display:none (скрытые)
-    clone.querySelectorAll('*').forEach(el => {
-      const style = el.getAttribute('style') || '';
-      if (/display\s*:\s*none/i.test(style)) {
-        el.remove();
-      }
-    });
-
-    return clone.innerHTML;
+    // Возвращаем сериализованный HTML с учетом Shadow DOM
+    return serializeWithShadowDOM(mainElement, removeSels);
   }, { contentSels: allContentSelectors, removeSels: allRemoveSelectors });
+
+  if (options.decodeFonts) {
+    const { getDecodedFontMap, deobfuscateText } = await import('./font-decoder.js');
+    const fontMap = await getDecodedFontMap(page);
+    return deobfuscateText(cleanedHtml, fontMap);
+  }
 
   return cleanedHtml;
 }

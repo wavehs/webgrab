@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebGrab — Панель управления</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --bg-dark: #0b0f19;
+      --bg-card: rgba(17, 24, 39, 0.7);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --primary-glow: rgba(59, 130, 246, 0.4);
+      --success: #10b981;
+      --success-glow: rgba(16, 185, 129, 0.3);
+      --warning: #f59e0b;
+      --error: #ef4444;
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --font-ui: 'Outfit', sans-serif;
+      --font-mono: 'Fira Code', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      background-image: 
+        radial-gradient(circle at 10% 20%, rgba(59, 130, 246, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 90% 80%, rgba(16, 185, 129, 0.05) 0%, transparent 40%);
+      background-attachment: fixed;
+      font-family: var(--font-ui);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    header {
+      backdrop-filter: blur(12px);
+      background: rgba(15, 23, 42, 0.6);
+      border-bottom: 1px solid var(--border-color);
+      padding: 1.25rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .logo-container {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .logo-icon {
+      background: linear-gradient(135deg, var(--primary), var(--success));
+      width: 2.2rem;
+      height: 2.2rem;
+      border-radius: 0.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      color: white;
+      box-shadow: 0 0 15px var(--primary-glow);
+    }
+
+    .logo-text {
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      background: linear-gradient(to right, #ffffff, #93c5fd);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      font-weight: 500;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+      color: var(--success);
+      padding: 0.35rem 0.75rem;
+      border-radius: 1rem;
+      transition: all 0.3s ease;
+    }
+
+    .status-badge.working {
+      background: rgba(59, 130, 246, 0.1);
+      border: 1px solid rgba(59, 130, 246, 0.2);
+      color: var(--primary);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: currentColor;
+      box-shadow: 0 0 8px currentColor;
+    }
+
+    .status-badge.working .status-dot {
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 0.4; transform: scale(0.9); }
+      50% { opacity: 1; transform: scale(1.1); }
+      100% { opacity: 0.4; transform: scale(0.9); }
+    }
+
+    main {
+      max-width: 1400px;
+      width: 100%;
+      margin: 2rem auto;
+      padding: 0 1.5rem;
+      display: grid;
+      grid-template-columns: 450px 1fr;
+      gap: 1.5rem;
+      flex-grow: 1;
+    }
+
+    @media (max-width: 1024px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background: var(--bg-card);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border-color);
+      border-radius: 1rem;
+      padding: 1.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    }
+
+    h2 {
+      font-size: 1.2rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    label {
+      font-size: 0.88rem;
+      font-weight: 500;
+      color: var(--text-main);
+    }
+
+    .input-desc {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-top: -0.25rem;
+    }
+
+    input[type="text"], input[type="number"], select, textarea {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--border-color);
+      border-radius: 0.5rem;
+      color: var(--text-main);
+      padding: 0.65rem 0.88rem;
+      font-family: var(--font-ui);
+      font-size: 0.95rem;
+      outline: none;
+      transition: all 0.2s ease;
+      width: 100%;
+    }
+
+    input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    .formats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.5rem;
+    }
+
+    .format-checkbox {
+      display: none;
+    }
+
+    .format-label {
+      background: rgba(15, 23, 42, 0.4);
+      border: 1px solid var(--border-color);
+      border-radius: 0.5rem;
+      padding: 0.5rem;
+      text-align: center;
+      font-size: 0.88rem;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s ease;
+      user-select: none;
+    }
+
+    .format-checkbox:checked + .format-label {
+      background: rgba(59, 130, 246, 0.15);
+      border-color: var(--primary);
+      color: #93c5fd;
+      box-shadow: 0 0 8px rgba(59, 130, 246, 0.1);
+    }
+
+    .format-label:hover {
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .toggle-group {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.75rem;
+      background: rgba(15, 23, 42, 0.2);
+      padding: 1rem;
+      border-radius: 0.75rem;
+      border: 1px solid var(--border-color);
+    }
+
+    .toggle-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.88rem;
+    }
+
+    /* Switch */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 22px;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(255, 255, 255, 0.1);
+      transition: .3s;
+      border-radius: 22px;
+      border: 1px solid var(--border-color);
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 14px;
+      width: 14px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .3s;
+      border-radius: 50%;
+    }
+
+    input:checked + .slider {
+      background-color: var(--primary);
+    }
+
+    input:focus + .slider {
+      box-shadow: 0 0 1px var(--primary);
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(22px);
+    }
+
+    .advanced-trigger {
+      font-size: 0.88rem;
+      color: var(--primary);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-weight: 500;
+      user-select: none;
+    }
+
+    .advanced-options {
+      display: none;
+      flex-direction: column;
+      gap: 1rem;
+      border-top: 1px solid var(--border-color);
+      padding-top: 1rem;
+    }
+
+    .advanced-options.show {
+      display: flex;
+    }
+
+    .btn {
+      background: linear-gradient(135deg, var(--primary), var(--primary-hover));
+      border: none;
+      border-radius: 0.5rem;
+      color: white;
+      font-family: var(--font-ui);
+      font-size: 1rem;
+      font-weight: 600;
+      padding: 0.85rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      box-shadow: 0 4px 15px var(--primary-glow);
+      transition: all 0.2s ease;
+      width: 100%;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(59, 130, 246, 0.5);
+    }
+
+    .btn:active {
+      transform: translateY(0);
+    }
+
+    .btn:disabled {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-muted);
+      cursor: not-allowed;
+      box-shadow: none;
+      transform: none;
+    }
+
+    /* Right column */
+    .right-column {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      height: 100%;
+    }
+
+    .terminal-container {
+      background: #020617;
+      border: 1px solid var(--border-color);
+      border-radius: 1rem;
+      flex-grow: 1;
+      min-height: 400px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8);
+    }
+
+    .terminal-header {
+      background: rgba(15, 23, 42, 0.8);
+      border-bottom: 1px solid var(--border-color);
+      padding: 0.75rem 1.25rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .terminal-title {
+      font-size: 0.8rem;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .terminal-dot-indicators {
+      display: flex;
+      gap: 0.35rem;
+    }
+
+    .terminal-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .terminal-dot.red { background: #ef4444; }
+    .terminal-dot.yellow { background: #f59e0b; }
+    .terminal-dot.green { background: #10b981; }
+
+    .terminal-body {
+      padding: 1.25rem;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      line-height: 1.5;
+      overflow-y: auto;
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .log-line {
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .log-info { color: #93c5fd; }
+    .log-success { color: #34d399; font-weight: 500; }
+    .log-warn { color: #fcd34d; }
+    .log-error { color: #fca5a5; font-weight: 600; }
+    .log-debug { color: #6b7280; }
+
+    .files-card {
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .files-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 0.75rem;
+    }
+
+    .files-header h2 {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 0.4rem 0.85rem;
+      border-radius: 0.5rem;
+      font-size: 0.82rem;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      transition: all 0.2s ease;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .files-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .file-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(15, 23, 42, 0.3);
+      border: 1px solid var(--border-color);
+      padding: 0.65rem 1rem;
+      border-radius: 0.5rem;
+      transition: all 0.2s ease;
+    }
+
+    .file-item:hover {
+      background: rgba(15, 23, 42, 0.5);
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    .file-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+    }
+
+    .file-name {
+      font-size: 0.88rem;
+      font-weight: 500;
+    }
+
+    .file-size {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    .no-files {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.88rem;
+      padding: 1.5rem 0;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo-container">
+      <div class="logo-icon">W</div>
+      <div class="logo-text">WebGrab Dashboard</div>
+    </div>
+    <div id="status-badge" class="status-badge">
+      <div class="status-dot"></div>
+      <span id="status-text">Готов к работе</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- Left Column: Settings Form -->
+    <div class="card">
+      <h2>Параметры Задачи</h2>
+      
+      <div class="form-group">
+        <label for="url-input">URL страницы(страниц)</label>
+        <textarea id="url-input" placeholder="Введите один или несколько URL (каждый с новой строки)"></textarea>
+        <span class="input-desc">Укажите целевые адреса для загрузки</span>
+      </div>
+
+      <div class="form-group">
+        <label>Форматы для сохранения</label>
+        <div class="formats-grid">
+          <input type="checkbox" id="fmt-pdf" class="format-checkbox" checked value="pdf">
+          <label for="fmt-pdf" class="format-label">PDF</label>
+
+          <input type="checkbox" id="fmt-html" class="format-checkbox" value="html">
+          <label for="fmt-html" class="format-label">HTML</label>
+
+          <input type="checkbox" id="fmt-mhtml" class="format-checkbox" value="mhtml">
+          <label for="fmt-mhtml" class="format-label">MHTML</label>
+
+          <input type="checkbox" id="fmt-png" class="format-checkbox" value="png">
+          <label for="fmt-png" class="format-label">PNG</label>
+
+          <input type="checkbox" id="fmt-jpg" class="format-checkbox" value="jpg">
+          <label for="fmt-jpg" class="format-label">JPG</label>
+
+          <input type="checkbox" id="fmt-md" class="format-checkbox" value="md">
+          <label for="fmt-md" class="format-label">Markdown</label>
+
+          <input type="checkbox" id="fmt-txt" class="format-checkbox" value="txt">
+          <label for="fmt-txt" class="format-label">TXT</label>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="dir-input">Директория сохранения</label>
+        <input type="text" id="dir-input" value="exported" placeholder="Путь к папке (например, exported)">
+      </div>
+
+      <div class="form-group">
+        <label for="output-input">Имя выходного файла (необязательно)</label>
+        <input type="text" id="output-input" placeholder="Автоматическое определение">
+        <span class="input-desc">Применяется только при загрузке одного URL</span>
+      </div>
+
+      <div class="toggle-group">
+        <div class="toggle-item">
+          <span>Режим отображения браузера (Headed)</span>
+          <label class="switch">
+            <input type="checkbox" id="opt-headed">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="toggle-item">
+          <span>Обход клиентских защит (Bypass)</span>
+          <label class="switch">
+            <input type="checkbox" id="opt-bypass" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="toggle-item">
+          <span>Прокрутка для ленивой загрузки (Scroll)</span>
+          <label class="switch">
+            <input type="checkbox" id="opt-scroll" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="toggle-item">
+          <span>Глубокий скроллинг (Deep Scroll для SPA)</span>
+          <label class="switch">
+            <input type="checkbox" id="opt-deep-scroll">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="toggle-item">
+          <span>Раскрывать скрытые блоки (Expand)</span>
+          <label class="switch">
+            <input type="checkbox" id="opt-expand" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="advanced-trigger" onclick="toggleAdvanced()">
+        <span>Дополнительные настройки</span>
+        <span id="adv-chevron">▶</span>
+      </div>
+
+      <div id="advanced-options" class="advanced-options">
+        <div class="form-group">
+          <label for="timeout-input">Таймаут загрузки страницы (мс)</label>
+          <input type="number" id="timeout-input" value="30000">
+        </div>
+        
+        <div class="form-group">
+          <label for="wait-input">Дополнительное ожидание (мс)</label>
+          <input type="number" id="wait-input" value="0">
+        </div>
+
+        <div class="form-group">
+          <label for="viewport-input">Размер окна (Viewport)</label>
+          <input type="text" id="viewport-input" value="1920x1080">
+        </div>
+
+        <div class="form-group">
+          <label for="selector-input">CSS-селектор контента</label>
+          <input type="text" id="selector-input" placeholder="Например, article, #main-content">
+        </div>
+
+        <div class="form-group">
+          <label for="cookies-select">Источник Cookies</label>
+          <select id="cookies-select" onchange="onCookiesChange()">
+            <option value="">Без Cookies</option>
+            <option value="chrome">Google Chrome (системный)</option>
+            <option value="edge">Microsoft Edge (системный)</option>
+            <option value="firefox">Mozilla Firefox (системный)</option>
+            <option value="file">Загрузить из файла...</option>
+          </select>
+        </div>
+
+        <div id="cookies-file-group" class="form-group" style="display: none;">
+          <label for="cookies-file-input">Путь к файлу Cookies (.json)</label>
+          <input type="text" id="cookies-file-input" placeholder="C:\path\to\cookies.json">
+        </div>
+      </div>
+
+      <button id="run-btn" class="btn" onclick="startGrabbing()">
+        <span>Запустить скачивание</span>
+      </button>
+    </div>
+
+    <!-- Right Column: Console & Files List -->
+    <div class="right-column">
+      <!-- Terminal console -->
+      <div class="terminal-container">
+        <div class="terminal-header">
+          <div class="terminal-title">
+            <span>Логи Выполнения</span>
+          </div>
+          <div class="terminal-dot-indicators">
+            <div class="terminal-dot red"></div>
+            <div class="terminal-dot yellow"></div>
+            <div class="terminal-dot green"></div>
+          </div>
+        </div>
+        <div id="terminal-body" class="terminal-body">
+          <div class="log-line log-info">Панель управления запущена. Ожидание задачи...</div>
+        </div>
+      </div>
+
+      <!-- Files manager -->
+      <div class="card files-card">
+        <div class="files-header">
+          <h2>Скачанные файлы</h2>
+          <button class="btn-secondary" onclick="openFolder()">
+            📂 Открыть папку
+          </button>
+        </div>
+        <div id="files-list" class="files-list">
+          <div class="no-files">Загрузка списка файлов...</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    let isWorking = false;
+    let sseSource = null;
+
+    // Инициализация при загрузке
+    window.addEventListener('load', () => {
+      connectLogs();
+      updateFilesList();
+      // Периодическое обновление списка файлов
+      setInterval(updateFilesList, 5000);
+    });
+
+    function toggleAdvanced() {
+      const adv = document.getElementById('advanced-options');
+      const chevron = document.getElementById('adv-chevron');
+      if (adv.classList.contains('show')) {
+        adv.classList.remove('show');
+        chevron.textContent = '▶';
+      } else {
+        adv.classList.add('show');
+        chevron.textContent = '▼';
+      }
+    }
+
+    function onCookiesChange() {
+      const select = document.getElementById('cookies-select');
+      const fileGroup = document.getElementById('cookies-file-group');
+      if (select.value === 'file') {
+        fileGroup.style.display = 'flex';
+      } else {
+        fileGroup.style.display = 'none';
+      }
+    }
+
+    function addLogToTerminal(type, message) {
+      const term = document.getElementById('terminal-body');
+      
+      if (type === 'clear') {
+        term.innerHTML = '';
+        return;
+      }
+
+      const line = document.createElement('div');
+      line.className = `log-line log-${type}`;
+      
+      // Форматируем время
+      const now = new Date();
+      const timeStr = `[${now.toTimeString().split(' ')[0]}]`;
+      
+      let prefix = '';
+      if (type === 'info') prefix = 'ℹ ';
+      if (type === 'success') prefix = '✔ ';
+      if (type === 'warn') prefix = '⚠ ';
+      if (type === 'error') prefix = '✖ ';
+      if (type === 'debug') prefix = '⚙ ';
+
+      line.textContent = `${timeStr} ${prefix}${message}`;
+      term.appendChild(line);
+      
+      // Авто-скролл вниз
+      term.scrollTop = term.scrollHeight;
+    }
+
+    // Подключение к каналу SSE
+    function connectLogs() {
+      if (sseSource) sseSource.close();
+      
+      sseSource = new EventSource('/api/logs');
+      
+      sseSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          addLogToTerminal(data.type, data.message);
+          
+          if (data.type === 'success' && data.message.includes('Работа завершена')) {
+            setWorkingState(false);
+            updateFilesList();
+          } else if (data.type === 'info' && data.message.includes('Инициализация браузера')) {
+            setWorkingState(true);
+          }
+        } catch (err) {
+          console.error('Ошибка разбора сообщения лога:', err);
+        }
+      };
+
+      sseSource.onerror = () => {
+        console.warn('Соединение с SSE потеряно. Переподключение...');
+      };
+    }
+
+    function setWorkingState(working) {
+      isWorking = working;
+      const runBtn = document.getElementById('run-btn');
+      const statusBadge = document.getElementById('status-badge');
+      const statusText = document.getElementById('status-text');
+
+      if (working) {
+        runBtn.disabled = true;
+        runBtn.textContent = 'Идет скачивание...';
+        statusBadge.className = 'status-badge working';
+        statusText.textContent = 'Выполнение задачи';
+      } else {
+        runBtn.disabled = false;
+        runBtn.textContent = 'Запустить скачивание';
+        statusBadge.className = 'status-badge';
+        statusText.textContent = 'Готов к работе';
+      }
+    }
+
+    async function startGrabbing() {
+      if (isWorking) return;
+
+      const urlInput = document.getElementById('url-input').value.trim();
+      if (!urlInput) {
+        alert('Пожалуйста, введите хотя бы один URL.');
+        return;
+      }
+
+      // Парсим URL
+      const urls = urlInput.split('\n')
+        .map(u => u.trim())
+        .filter(u => u && !u.startsWith('#'));
+
+      if (urls.length === 0) {
+        alert('Пожалуйста, введите валидные URL.');
+        return;
+      }
+
+      // Собираем форматы
+      const formats = [];
+      ['pdf', 'html', 'mhtml', 'png', 'jpg', 'md', 'txt'].forEach(fmt => {
+        if (document.getElementById(`fmt-${fmt}`).checked) {
+          formats.push(fmt);
+        }
+      });
+
+      if (formats.length === 0) {
+        alert('Выберите хотя бы один формат для сохранения.');
+        return;
+      }
+
+      const formatOption = formats.length === 7 ? 'all' : formats.join(',');
+
+      // Источник cookies
+      let cookiesSource = document.getElementById('cookies-select').value;
+      if (cookiesSource === 'file') {
+        const filePath = document.getElementById('cookies-file-input').value.trim();
+        if (!filePath) {
+          alert('Укажите путь к файлу cookies.');
+          return;
+        }
+        cookiesSource = `file:${filePath}`;
+      }
+
+      // Собираем опции
+      const options = {
+        format: formatOption,
+        dir: document.getElementById('dir-input').value.trim() || 'exported',
+        output: document.getElementById('output-input').value.trim() || undefined,
+        headed: document.getElementById('opt-headed').checked,
+        bypass: document.getElementById('opt-bypass').checked,
+        scroll: document.getElementById('opt-scroll').checked,
+        deepScroll: document.getElementById('opt-deep-scroll').checked,
+        expand: document.getElementById('opt-expand').checked,
+        timeout: document.getElementById('timeout-input').value || '30000',
+        wait: document.getElementById('wait-input').value || undefined,
+        viewport: document.getElementById('viewport-input').value || '1920x1080',
+        selector: document.getElementById('selector-input').value.trim() || undefined,
+        cookies: cookiesSource || undefined
+      };
+
+      setWorkingState(true);
+
+      try {
+        const response = await fetch('/api/grab', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ urls, options })
+        });
+
+        const result = await response.json();
+        if (!result.success) {
+          alert(`Ошибка при запуске задачи: ${result.error}`);
+          setWorkingState(false);
+        }
+      } catch (err) {
+        alert(`Не удалось связаться с сервером: ${err.message}`);
+        setWorkingState(false);
+      }
+    }
+
+    async function updateFilesList() {
+      const dir = document.getElementById('dir-input').value.trim() || 'exported';
+      const filesContainer = document.getElementById('files-list');
+
+      try {
+        const response = await fetch(`/api/files?dir=${encodeURIComponent(dir)}`);
+        const data = await response.json();
+
+        if (data.error) {
+          filesContainer.innerHTML = `<div class="no-files">Ошибка: ${data.error}</div>`;
+          return;
+        }
+
+        if (!data.files || data.files.length === 0) {
+          filesContainer.innerHTML = '<div class="no-files">В папке пока нет скачанных файлов.</div>';
+          return;
+        }
+
+        filesContainer.innerHTML = data.files.map(file => `
+          <div class="file-item">
+            <div class="file-info">
+              <span class="file-name">${file.name}</span>
+              <span class="file-size">${file.size}</span>
+            </div>
+          </div>
+        `).join('');
+      } catch (err) {
+        filesContainer.innerHTML = `<div class="no-files">Не удалось получить список файлов.</div>`;
+      }
+    }
+
+    async function openFolder() {
+      const dir = document.getElementById('dir-input').value.trim() || 'exported';
+      try {
+        const response = await fetch('/api/open-folder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dir })
+        });
+        const result = await response.json();
+        if (result.error) {
+          alert(`Ошибка открытия папки: ${result.error}`);
+        }
+      } catch (err) {
+        alert(`Не удалось связаться с сервером: ${err.message}`);
+      }
+    }
+  </script>
+</body>
+</html>

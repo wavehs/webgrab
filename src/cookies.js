@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { chromium, firefox } from 'playwright';
 import { logger } from './utils.js';
 
 /**
@@ -21,7 +22,6 @@ export function getBrowserProfilePath(browserName) {
     const firefoxDir = path.join(home, 'AppData', 'Roaming', 'Mozilla', 'Firefox', 'Profiles');
     if (fs.existsSync(firefoxDir)) {
       const profiles = fs.readdirSync(firefoxDir);
-      // Ищем дефолтный профиль
       const defaultProfile = profiles.find(dir => dir.endsWith('.default') || dir.endsWith('.default-release'));
       if (defaultProfile) {
         return path.join(firefoxDir, defaultProfile);
@@ -32,8 +32,47 @@ export function getBrowserProfilePath(browserName) {
 }
 
 /**
- * Загружает cookies из JSON файла
- * @param {string} filePath - Путь к JSON файлу с cookies
+ * Парсит cookies в формате Netscape (cookies.txt)
+ * @param {string} fileContent 
+ * @returns {Array}
+ */
+export function parseNetscapeCookies(fileContent) {
+  const cookies = [];
+  const lines = fileContent.split('\n');
+  
+  for (let line of lines) {
+    line = line.trim();
+    if (!line) continue;
+    
+    let isHttpOnly = false;
+    if (line.startsWith('#HttpOnly_')) {
+      line = line.substring(10);
+      isHttpOnly = true;
+    } else if (line.startsWith('#')) {
+      continue;
+    }
+    
+    const parts = line.split('\t');
+    if (parts.length < 7) continue;
+    
+    const [domain, flag, pathVal, secureFlag, expiration, name, value] = parts;
+    
+    cookies.push({
+      name,
+      value,
+      domain,
+      path: pathVal,
+      secure: secureFlag.toUpperCase() === 'TRUE',
+      expires: parseInt(expiration, 10),
+      httpOnly: isHttpOnly
+    });
+  }
+  return cookies;
+}
+
+/**
+ * Загружает cookies из JSON или Netscape файла
+ * @param {string} filePath - Путь к файлу с cookies
  * @returns {Array} - Массив объектов cookies для Playwright
  */
 export function loadCookiesFromFile(filePath) {
@@ -42,20 +81,20 @@ export function loadCookiesFromFile(filePath) {
       throw new Error(`Файл не найден: ${filePath}`);
     }
     const content = fs.readFileSync(filePath, 'utf-8');
-    const data = JSON.parse(content);
-    
-    // Поддержка двух форматов:
-    // 1. Формат Playwright: { cookies: [...] }
-    // 2. Обычный массив: [...]
-    let cookies = Array.isArray(data) ? data : data.cookies;
+    let cookies = [];
+
+    if (content.trim().startsWith('[') || content.trim().startsWith('{')) {
+      const data = JSON.parse(content);
+      cookies = Array.isArray(data) ? data : data.cookies;
+    } else {
+      cookies = parseNetscapeCookies(content);
+    }
     
     if (!Array.isArray(cookies)) {
       throw new Error('Некорректный формат файла. Ожидался массив cookies.');
     }
 
-    // Приводим куки к формату Playwright
     return cookies.map(c => {
-      // Исключаем лишние или несовместимые поля (например, storeId, hostOnly)
       const cleanCookie = {
         name: c.name,
         value: c.value,
@@ -74,4 +113,33 @@ export function loadCookiesFromFile(filePath) {
     logger.error(`Ошибка при загрузке cookies из файла ${filePath}:`, err);
     throw err;
   }
+}
+
+/**
+ * Извлекает cookies из установленного браузера с помощью временного persistent context
+ * @param {string} browserName - 'chrome', 'edge' или 'firefox'
+ * @returns {Promise<Array>}
+ */
+export async function extractBrowserCookies(browserName) {
+  const profilePath = getBrowserProfilePath(browserName);
+  if (!profilePath) {
+    throw new Error(`Профиль браузера ${browserName} не найден.`);
+  }
+
+  logger.info(`Извлечение cookies из ${browserName} (${profilePath})...`);
+  logger.warn('Закройте этот браузер, если он запущен, во избежание ошибки блокировки профиля.');
+
+  const isFirefox = browserName === 'firefox';
+  const driver = isFirefox ? firefox : chromium;
+
+  const context = await driver.launchPersistentContext(profilePath, {
+    headless: true,
+    args: ['--disable-web-security']
+  });
+
+  const cookies = await context.cookies();
+  await context.close();
+
+  logger.success(`Успешно извлечено ${cookies.length} cookies из ${browserName}.`);
+  return cookies;
 }

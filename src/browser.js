@@ -3,6 +3,11 @@ import { logger } from './utils.js';
 import { bypassRestrictions, bypassPostLoad } from './protection-bypass.js';
 import { getBrowserProfilePath, loadCookiesFromFile } from './cookies.js';
 import { detectPlatform, expandCollapsedContent } from './content-detector.js';
+import { applyStealth } from './stealth.js';
+import { setupFontInterception } from './font-decoder.js';
+import { processCanvasesOCR } from './canvas-extractor.js';
+import { getBrowserProfile } from './fingerprint.js';
+import { humanizePage } from './behavior.js';
 
 /**
  * Инициализирует и настраивает браузер
@@ -17,6 +22,15 @@ export async function initBrowser(options) {
       '--blink-settings=imagesEnabled=true'
     ]
   };
+
+  // Поддержка прокси в launchOptions
+  if (options.proxy) {
+    launchOptions.proxy = { server: options.proxy };
+  }
+
+  // Получаем профиль отпечатков
+  const profile = getBrowserProfile(options.profile);
+  logger.info(`Используем профиль отпечатков: ${profile.name}`);
 
   let browser;
   let context;
@@ -38,27 +52,39 @@ export async function initBrowser(options) {
     }
   }
 
+  // Загружаем состояние сессии из файла
+  let loadedSession = null;
+  if (options.loadSession) {
+    const { loadSession } = await import('./session-manager.js');
+    loadedSession = loadSession(options.loadSession);
+  }
+
   // Запуск браузера
   if (profilePath) {
     // Режим Persistent Context (использует реальный профиль с куками и сессиями)
     const driver = browserType === 'chromium' ? chromium : firefox;
     context = await driver.launchPersistentContext(profilePath, {
       ...launchOptions,
-      viewport: options.viewport ? parseViewport(options.viewport) : { width: 1920, height: 1080 },
-      userAgent: options.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      viewport: options.viewport ? parseViewport(options.viewport) : profile.viewport,
+      userAgent: options.userAgent || profile.userAgent,
+      deviceScaleFactor: profile.deviceScaleFactor || 1,
+      storageState: loadedSession ? loadedSession.storageState : undefined
     });
   } else {
     // Стандартный чистый режим
     const driver = browserType === 'chromium' ? chromium : firefox;
     browser = await driver.launch(launchOptions);
     context = await browser.newContext({
-      viewport: options.viewport ? parseViewport(options.viewport) : { width: 1920, height: 1080 },
-      userAgent: options.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      acceptDownloads: true
+      viewport: options.viewport ? parseViewport(options.viewport) : profile.viewport,
+      userAgent: options.userAgent || profile.userAgent,
+      acceptDownloads: true,
+      proxy: options.proxy ? { server: options.proxy } : undefined,
+      deviceScaleFactor: profile.deviceScaleFactor || 1,
+      storageState: loadedSession ? loadedSession.storageState : undefined
     });
 
-    // Загрузка cookies из файла, если указан путь
-    if (cookieSource && cookieSource.startsWith('file:')) {
+    // Загрузка cookies из файла или массива
+    if (cookieSource && cookieSource.startsWith && cookieSource.startsWith('file:')) {
       const filePath = cookieSource.replace('file:', '');
       try {
         const cookies = loadCookiesFromFile(filePath);
@@ -66,6 +92,13 @@ export async function initBrowser(options) {
         logger.info(`Успешно загружено ${cookies.length} cookies из файла.`);
       } catch (err) {
         logger.warn(`Не удалось применить cookies из файла.`);
+      }
+    } else if (Array.isArray(cookieSource)) {
+      try {
+        await context.addCookies(cookieSource);
+        logger.info(`Успешно загружено ${cookieSource.length} cookies.`);
+      } catch (err) {
+        logger.warn(`Не удалось применить cookies из массива.`);
       }
     }
   }
@@ -75,13 +108,41 @@ export async function initBrowser(options) {
   const pages = context.pages();
   const page = pages.length > 0 ? pages[0] : await context.newPage();
 
+  // Настраиваем перехват шрифтов
+  setupFontInterception(page);
+
+  // Восстанавливаем sessionStorage
+  if (loadedSession && loadedSession.sessionStorage) {
+    const { injectSessionStorage } = await import('./session-manager.js');
+    await injectSessionStorage(page, loadedSession.sessionStorage);
+  }
+
   // Добавляем stealth-скрипты
-  await page.addInitScript(() => {
-    Object.defineProperty(navigator, 'webdriver', { get: () => false });
-    window.chrome = { runtime: {} };
-    Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
-    Object.defineProperty(navigator, 'languages', { get: () => ['ru-RU', 'ru', 'en-US', 'en'] });
-  });
+  if (options.stealth) {
+    logger.info('Применяем расширенный Stealth-режим...');
+    await applyStealth(page, profile);
+  } else {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => false });
+      window.chrome = { runtime: {} };
+      Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
+      Object.defineProperty(navigator, 'languages', { get: () => ['ru-RU', 'ru', 'en-US', 'en'] });
+    });
+  }
+
+  // Применяем extra-headers
+  if (options.extraHeaders) {
+    try {
+      let headers = options.extraHeaders;
+      if (typeof headers === 'string') {
+        headers = JSON.parse(headers);
+      }
+      await context.setExtraHTTPHeaders(headers);
+      logger.info('Применены дополнительные HTTP заголовки.');
+    } catch (err) {
+      logger.error('Ошибка при разборе --extra-headers:', err);
+    }
+  }
 
   return { browser, context, page };
 }
@@ -133,7 +194,7 @@ export async function loadPage(page, url, options) {
   }
 
   // Скроллинг страницы для ленивой загрузки (lazy load картинок и контента)
-  if (options.scroll !== false) {
+  if (options.scroll !== false && !options.humanize) {
     const useDeepScroll = options.deepScroll || (platform && platform.needsDeepScroll);
     
     if (useDeepScroll) {
@@ -145,6 +206,11 @@ export async function loadPage(page, url, options) {
     }
   }
 
+  // Симуляция человеческого поведения
+  if (options.humanize) {
+    await humanizePage(page, options);
+  }
+
   // Повторное раскрытие блоков после скроллинга (могли появиться новые)
   if (options.expand !== false) {
     await expandCollapsedContent(page, platform);
@@ -153,6 +219,17 @@ export async function loadPage(page, url, options) {
   // Пост-загрузочный обход защит
   if (options.bypass !== false) {
     await bypassPostLoad(page);
+  }
+
+  // Распознавание canvas текста (OCR)
+  if (options.ocr) {
+    await processCanvasesOCR(page, options);
+  }
+
+  // Автоматическое решение капчи
+  if (options.captchaService && options.captchaKey) {
+    const { trySolveCaptchaPage } = await import('./captcha-solver.js');
+    await trySolveCaptchaPage(page, options);
   }
 
   // Ожидание загрузки изображений

@@ -30,22 +30,54 @@ export function formatFileSize(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
+let logListener = null;
+
+/**
+ * Устанавливает функцию-слушатель для перенаправления логов (например, в GUI)
+ * @param {Function|null} listener 
+ */
+export function setLogListener(listener) {
+  logListener = listener;
+}
+
+function broadcastLog(type, message) {
+  if (logListener) {
+    try {
+      logListener({ type, message });
+    } catch (err) {
+      // Игнорируем ошибки доставки логов
+    }
+  }
+}
+
 /**
  * Системное логирование
  */
 export const logger = {
-  info: (msg) => console.log(chalk.blue('ℹ ') + msg),
-  success: (msg) => console.log(chalk.green('✔ ') + msg),
-  warn: (msg) => console.log(chalk.yellow('⚠ ') + msg),
+  info: (msg) => {
+    console.log(chalk.blue('ℹ ') + msg);
+    broadcastLog('info', msg);
+  },
+  success: (msg) => {
+    console.log(chalk.green('✔ ') + msg);
+    broadcastLog('success', msg);
+  },
+  warn: (msg) => {
+    console.log(chalk.yellow('⚠ ') + msg);
+    broadcastLog('warn', msg);
+  },
   error: (msg, err) => {
     console.error(chalk.red('✖ ') + msg);
     if (err && process.env.VERBOSE) {
       console.error(chalk.red(err.stack || err));
     }
+    broadcastLog('error', msg + (err ? ` (${err.message || err})` : ''));
   },
   debug: (msg) => {
     if (process.env.VERBOSE) {
       console.log(chalk.gray('⚙ [DEBUG] ') + msg);
     }
+    broadcastLog('debug', msg);
   }
 };
+
